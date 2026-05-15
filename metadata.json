@@ -1,0 +1,6 @@
+{
+  "name": "0RevDay",
+  "description": "A study management and revision application for medical students using Dynamic Load-Balanced Spacing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

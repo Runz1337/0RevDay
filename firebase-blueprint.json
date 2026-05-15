@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "Topic": {
+      "title": "Study Topic",
+      "description": "A topic to be reviewed, with DLBS scheduling metadata.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The name of the topic" },
+        "description": { "type": "string", "description": "User's notes or description" },
+        "hardness": { "type": "number", "description": "AI assigned hardness 1-10" },
+        "yield": { "type": "string", "description": "High/medium/low yield" },
+        "category": { "type": "string" },
+        "nextReviewUtc": { "type": "number", "description": "Timestamp for the next scheduled review" },
+        "bandwidthWeight": { "type": "number", "description": "0-1 load balancer weight" },
+        "volatilityScore": { "type": "number", "description": "Volatility score" },
+        "stability": { "type": "number", "description": "Successful reviews" },
+        "reminderCopy": { "type": "string" },
+        "uiCardColor": { "type": "string" },
+        "uiIcon": { "type": "string" },
+        "uiPriorityLabel": { "type": "string" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
+      },
+      "required": ["title", "hardness", "nextReviewUtc", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User profile with DLBS preferences.",
+      "type": "object",
+      "properties": {
+        "dailyCognitiveBandwidth": { "type": "number", "description": "Max hardness sum per day" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["dailyCognitiveBandwidth", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile and DLBS settings."
+    },
+    "/users/{userId}/topics/{topicId}": {
+      "schema": "Topic",
+      "description": "Topics to study for a specific user."
+    }
+  }
+}

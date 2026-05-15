@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { 
+      // Using just auth != null for now to support non-verified emails easily in Dev
+      // But standard is request.auth.token.email_verified == true
+      return request.auth != null; 
+    }
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['dailyCognitiveBandwidth', 'createdAt']) &&
+             data.dailyCognitiveBandwidth is number &&
+             data.createdAt is number;
+    }
+
+    function isValidTopic(data) {
+      return data.keys().hasAll(['userId', 'title', 'hardness', 'nextReviewUtc', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 200 &&
+             data.hardness is number &&
+             data.nextReviewUtc is number &&
+             data.createdAt is number &&
+             data.updatedAt is number &&
+             (data.get('description', '') is string) && (data.get('description', '').size() <= 5000) &&
+             (data.get('detailedNotes', '') is string) &&
+             (data.get('subTopics', []) is list) &&
+             (data.get('flashcards', []) is list) &&
+             (data.get('flashcardSets', []) is list) &&
+             (data.get('yield', '') is string) && (data.get('yield', '').size() <= 50) &&
+             (data.get('category', '') is string) && (data.get('category', '').size() <= 100) &&
+             (data.get('visualDensityScore', null) == null || data.get('visualDensityScore', 0) is number) &&
+             (data.get('bandwidthWeight', 0) is number) &&
+             (data.get('volatilityScore', 0) is number) &&
+             (data.get('stability', 0) is number) &&
+             (data.get('reminderCopy', '') is string) && (data.get('reminderCopy', '').size() <= 1000) &&
+             (data.get('uiCardColor', '') is string) && (data.get('uiCardColor', '').size() <= 20) &&
+             (data.get('uiIcon', '') is string) && (data.get('uiIcon', '').size() <= 50) &&
+             (data.get('uiPriorityLabel', '') is string) && (data.get('uiPriorityLabel', '').size() <= 50);
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['dailyCognitiveBandwidth']) &&
+                    incoming().createdAt == existing().createdAt;
+      allow delete: if false;
+
+      match /topics/{topicId} {
+        allow get: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(topicId) &&
+                         isValidTopic(incoming());
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(topicId) &&
+                         isValidTopic(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'detailedNotes', 'subTopics', 'flashcards', 'flashcardSets', 'visualDensityScore', 'hardness', 'yield', 'category', 'nextReviewUtc', 'bandwidthWeight', 'volatilityScore', 'stability', 'reminderCopy', 'uiCardColor', 'uiIcon', 'uiPriorityLabel', 'updatedAt']) &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && resource.data.userId == request.auth.uid;
+      }
+    }
+  }
+}
