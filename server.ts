@@ -175,13 +175,14 @@ Ensure the output is ONLY valid JSON. Include at least 15 extremely high quality
       const ai = new GoogleGenAI(config);
       const modelId = req.body.customAiModel || 'gemini-2.5-flash';
       const prompt = `
-You are an EXTREMELY METICULOUS flashcard generation engine for a highly advanced Revision App. 
-Below are the FULL detailed notes, sub-topics, and description of a study topic, which were previously extracted from detailed study materials (including picture analysis).
+You are an EXTREMELY METICULOUS, HIGH-DENSITY flashcard generation engine for a highly advanced Revision App. 
+Below are the FULL detailed notes, sub-topics, and description of a study topic.
 
-### MANDATORY DIRECTIVE: Exhaustive Line-by-Line Coverage
-Your absolute mandate is to exhaustively cover EVERY SINGLE DETAIL, CONCEPT, FACT, AND LINE from the notes. 
-If the text contains 50 distinct facts, you MUST generate at least 50 flashcards. Leave absolutely nothing out. No concept or definition is too small. 
-Do NOT group multiple unrelated facts into one card. Break down complex paragraphs into multiple granular flashcards.
+### MANDATORY DIRECTIVE: Comprehensive, High-Density Cards
+Your mandate is to generate comprehensive flashcards that act as "mini-summaries." 
+Do NOT generate granular, one-fact cards. Instead, group related facts, mechanisms, and concepts into dense, structured flashcards.
+
+If the notes represent roughly 6 pages of content, generate approximately 18 high-density flashcards (aiming for roughly 3 dense cards per page). 
 
 Title: ${topicTitle}
 Description: ${topicDescription}
@@ -191,22 +192,19 @@ ${detailedNotes}
 SubTopics Summary: 
 ${JSON.stringify(subTopics)}
 
-Target number of cards: ${numFlashcards || 20}.
-HOWEVER, if the source material contains more concepts, you MUST generate MORE than the target to ensure 100% complete coverage of the notes above.
-
-User Custom Instructions for this generation: ${userPrompt || "Make them highly detailed and include advanced question types like fill-in-the-blanks. Include every single granular detail."}
+User Custom Instructions: ${userPrompt || "Make them highly detailed, comprehensive, and cover multiple related aspects of the topic in each card. Use clear Markdown structure."}
 
 Rules:
-1. Do not skip ANY details from the "Detailed Notes / Full Text". Ensure literally every fact, mechanism, and nuanced piece of data is converted into active recall questions.
-2. Formulate "questions" that ask for specific mechanisms, definitions, or bullet points. Ask very specific, granular questions. 
-3. Include advanced question types like fill-in-the-blanks (e.g. "The ___ pathway is responsible for...").
-4. The "answer" should be comprehensive, accurate, and use Markdown formatting where appropriate (bolding keywords, using lists).
+1. Generate dense cards that cover SIGNIFICANT portions of the notes at once. Each card should answer multiple interconnected questions or provide a structured summary of a sub-topic.
+2. Formulate "questions" as complex, multi-part, or broader conceptual queries.
+3. The "answer" should be extremely comprehensive, structured with deep Markdown (nested lists, bolding, italics, tables if necessary), and act as a complete review of the specific sub-topic being asked. It must answer multiple related questions simultaneously.
+4. Aim for high quality over high quantity.
 
 Output Format: A JSON array of objects matching this schema:
 [
   {
-    "question": "String",
-    "answer": "String with Markdown formatting"
+    "question": "String - Comprehensive multi-part question or topic prompt",
+    "answer": "String - Comprehensive, structured, and exhaustive answer with Markdown formatting, covering all related details."
   }
 ]
 Ensure the output is ONLY valid JSON array.

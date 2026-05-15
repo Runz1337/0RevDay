@@ -548,26 +548,13 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <button 
                              onClick={() => {
-                                playReminderSound(2);
+                                playReminderSound();
                              }}
-                             className="p-1.5 rounded-full bg-white border border-gray-200 text-gray-500 hover:text-black hover:bg-gray-50 transition-colors"
-                             title="Test Sound"
+                             className="text-xs font-medium text-gray-600 bg-white px-3 py-1.5 rounded-lg border border-gray-200 hover:text-black transition-colors"
                           >
-                             <Icons.Volume2 size={16} />
+                             Play Sound
                           </button>
-                          <select 
-                             className="liquid-select" 
-                             defaultValue={localStorage.getItem('reminderTone') || 'chime'}
-                             onChange={(e) => {
-                                localStorage.setItem('reminderTone', e.target.value);
-                                playReminderSound(2);
-                             }}
-                          >
-                             <option value="chime">Chime</option>
-                             <option value="ping">Ping</option>
-                             <option value="bubble">Bubble</option>
-                             <option value="none">None</option>
-                          </select>
+
                         </div>
                      </div>
                      

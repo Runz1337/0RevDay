@@ -17,41 +17,10 @@ interface TopicUIProps {
   onEditTime?: (topicId: string, newTimeUtc: number) => void;
 }
 
-export function playReminderSound(durationSeconds: number = 5) {
+export function playReminderSound() {
   try {
-    const toneType = localStorage.getItem('reminderTone') || 'chime';
-    if (toneType === 'none') return;
-    
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-    const ctx = new AudioContext();
-    
-    for(let i=0; i<durationSeconds; i++) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        if (toneType === 'ping') {
-           osc.type = 'sine';
-           osc.frequency.setValueAtTime(1200, ctx.currentTime + i);
-        } else if (toneType === 'bubble') {
-           osc.type = 'square';
-           osc.frequency.setValueAtTime(400, ctx.currentTime + i);
-           osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + i + 0.5);
-        } else {
-           osc.type = 'sine';
-           osc.frequency.setValueAtTime(880, ctx.currentTime + i);
-           osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + i + 0.5);
-        }
-        
-        gain.gain.setValueAtTime(0, ctx.currentTime + i);
-        gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + i + 0.05);
-        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + i + 0.9);
-        
-        osc.start(ctx.currentTime + i);
-        osc.stop(ctx.currentTime + i + 1);
-    }
+    const audio = new Audio('/mixkit-message-pop-alert-2354.mp3');
+    audio.play().catch(e => console.error("Audio play failed", e));
   } catch (e) {
     console.log("Audio play failed", e);
   }
