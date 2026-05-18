@@ -1,7 +1,9 @@
 {
   "version": 2,
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
   "functions": {
-    "api/**/*": {
+    "api/index.ts": {
       "maxDuration": 60
     }
   },
@@ -11,7 +13,7 @@
       "destination": "/api/index.ts"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
