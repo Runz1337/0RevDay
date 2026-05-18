@@ -125,7 +125,7 @@ Ensure the output is ONLY valid JSON. Include at least 15 extremely high quality
       if (!text) {
          throw new Error("No text returned from Gemini");
       }
-      console.log("Raw Gemini Response:", text);
+      console.log("Raw Gemini Response (truncated):", text.substring(0, 200) + "...");
       
       let jsonStr = text.trim();
       if (jsonStr.startsWith("```json")) {
