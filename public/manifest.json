@@ -1,0 +1,21 @@
+{
+  "name": "0RevDay",
+  "short_name": "0RevDay",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "description": "Flashcard App",
+  "icons": [
+    {
+      "src": "/IMG_20260516_153733.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/IMG_20260516_153733.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

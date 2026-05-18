@@ -79,8 +79,8 @@ export function FlashcardAppView({ topic, onClose, onGenerateSet, onDeleteSet }:
                         )}
                       >
                         <div className="flex items-center justify-between mb-1">
-                           <span className="font-semibold text-sm">Set {topic.flashcardSets.length - idx}</span>
-                           <span className={cn("text-[10px] uppercase font-bold tracking-widest", activeSetId === s.id ? "text-gray-300" : "text-gray-400")}>{s.cards.length} cards</span>
+                           <span className="font-semibold text-sm truncate pr-2">{topic.title} • {idx === topic.flashcardSets.length - 1 ? 'Base Set' : `Set ${topic.flashcardSets.length - idx}`}</span>
+                           <span className={cn("text-[10px] uppercase font-bold tracking-widest shrink-0", activeSetId === s.id ? "text-gray-300" : "text-gray-400")}>{s.cards.length} cards</span>
                         </div>
                         <div className={cn("text-xs flex items-center justify-between", activeSetId === s.id ? "text-gray-300" : "text-gray-500")}>
                            <span>{new Date(s.timestamp).toLocaleDateString()}</span>

@@ -42,6 +42,10 @@ service cloud.firestore {
              (data.get('bandwidthWeight', 0) is number) &&
              (data.get('volatilityScore', 0) is number) &&
              (data.get('stability', 0) is number) &&
+             (data.get('reviewStep', 0) is number) &&
+             (data.get('isOptional', false) is bool) &&
+             (data.get('isCompleted', false) is bool) &&
+             (data.get('reviewHistory', []) is list) &&
              (data.get('reminderCopy', '') is string) && (data.get('reminderCopy', '').size() <= 1000) &&
              (data.get('uiCardColor', '') is string) && (data.get('uiCardColor', '').size() <= 20) &&
              (data.get('uiIcon', '') is string) && (data.get('uiIcon', '').size() <= 50) &&
@@ -64,7 +68,7 @@ service cloud.firestore {
                          isValidTopic(incoming());
         allow update: if isOwner(userId) && isValidId(userId) && isValidId(topicId) &&
                          isValidTopic(incoming()) &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'detailedNotes', 'subTopics', 'flashcards', 'flashcardSets', 'visualDensityScore', 'hardness', 'yield', 'category', 'nextReviewUtc', 'bandwidthWeight', 'volatilityScore', 'stability', 'reminderCopy', 'uiCardColor', 'uiIcon', 'uiPriorityLabel', 'updatedAt']) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'detailedNotes', 'subTopics', 'flashcards', 'flashcardSets', 'visualDensityScore', 'hardness', 'yield', 'category', 'nextReviewUtc', 'bandwidthWeight', 'volatilityScore', 'stability', 'reviewStep', 'isOptional', 'isCompleted', 'reviewHistory', 'reminderCopy', 'uiCardColor', 'uiIcon', 'uiPriorityLabel', 'updatedAt']) &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().userId == existing().userId;
         allow delete: if isOwner(userId) && resource.data.userId == request.auth.uid;

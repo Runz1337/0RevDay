@@ -4,7 +4,7 @@ import { cn } from '../lib/utils';
 import * as Icons from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export function CalendarWidget({ topics, logs = [] }: { topics: any[], logs?: any[] }) {
+export function CalendarWidget({ topics, logs = [], onReviewComplete }: { topics: any[], logs?: any[], onReviewComplete?: (id: string, confidence: number) => void }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -16,10 +16,74 @@ export function CalendarWidget({ topics, logs = [] }: { topics: any[], logs?: an
   const days = eachDayOfInterval({ start: startDate, end: endDate });
 
   const getDayData = (date: Date) => {
-    const dayTopics = topics.filter(t => isSameDay(new Date(t.nextReviewUtc), date));
+    const startOfD = new Date(date).setHours(0, 0, 0, 0);
+    const endOfD = new Date(date).setHours(23, 59, 59, 999);
+    const now = Date.now();
+    const isToday = now >= startOfD && now <= endOfD;
+    const isPast = now > endOfD;
+    const isDayRunningOut = isToday && now >= endOfD - (2 * 60 * 60 * 1000);
+
+    const dots = {
+       pink: false,
+       green: false,
+       blue: false,
+       red: false,
+       orange: false
+    };
+
+    const pending = [];
+    const skipped = [];
+    const completed = [];
+    const created = [];
+    let hasPendingFade = false;
+    let hasRunningOutFade = false;
+
+    topics.forEach(t => {
+      // Achievement: Created new topic
+      if (t.createdAt && t.createdAt >= startOfD && t.createdAt <= endOfD) {
+         created.push(t);
+         dots.pink = true;
+      }
+
+      if (!t.isCompleted && t.nextReviewUtc >= startOfD && t.nextReviewUtc <= endOfD) {
+         if (isPast) {
+            skipped.push(t);
+            if (t.isOptional) dots.orange = true;
+            else dots.red = true;
+         } else {
+            pending.push(t);
+            if (isDayRunningOut) {
+               dots.red = true; // Red dot when day is running out
+               hasRunningOutFade = true; // Red fade temporary
+            } else {
+               dots.blue = true; // Normal pending dot
+               hasPendingFade = true; // Blue fade temporary
+            }
+         }
+      }
+
+      if (t.reviewHistory) {
+         t.reviewHistory.forEach((h: any) => {
+            if (h.date >= startOfD && h.date <= endOfD) {
+               completed.push({ ...t, historyLog: h });
+               if (h.status === 'on-time') dots.green = true;
+               else if (h.status === 'early') dots.pink = true;
+               else if (h.status === 'late') dots.red = true;
+            }
+         });
+      }
+    });
+
     return {
-      reviewsCount: dayTopics.length,
-      hasHighlyVolatile: dayTopics.some(t => t.volatilityScore > 7)
+      pending,
+      skipped,
+      completed,
+      created,
+      totalCount: pending.length + skipped.length + completed.length + created.length,
+      dots,
+      hasPendingFade,
+      hasRunningOutFade,
+      hasHighlyVolatile: pending.some(t => t.volatilityScore > 7) || skipped.some((t: any) => t.volatilityScore > 7)
     };
   };
 
@@ -27,14 +91,26 @@ export function CalendarWidget({ topics, logs = [] }: { topics: any[], logs?: an
   
   // Custom smart msg
   let smartMsg = "No reviews scheduled. Rest up!";
-  if (selectedData.reviewsCount > 5) {
-     smartMsg = `Heavy load: ${selectedData.reviewsCount} topics. Take regular breaks.`;
-  } else if (selectedData.reviewsCount > 0) {
-     smartMsg = `Manageable: ${selectedData.reviewsCount} topics.`;
+  if (selectedData.skipped.length > 0 && selectedData.pending.length > 0) {
+      smartMsg = `You have ${selectedData.skipped.length} overdue tasks and ${selectedData.pending.length} pending tasks.`;
+  } else if (selectedData.skipped.length > 0) {
+      smartMsg = `You have ${selectedData.skipped.length} overdue tasks. Catch up!`;
+  } else if (selectedData.pending.length > 5) {
+     smartMsg = `Heavy load: ${selectedData.pending.length} topics pending. Take regular breaks.`;
+  } else if (selectedData.pending.length > 0) {
+     smartMsg = `Manageable: ${selectedData.pending.length} pending topics.`;
+  } else if (selectedData.completed.length > 0) {
+     smartMsg = `Great job! You completed ${selectedData.completed.length} topics today.`;
+  } else if (selectedData.created.length > 0) {
+     smartMsg = `Great start! You logged ${selectedData.created.length} new achievements today.`;
   }
   
   if (selectedData.hasHighlyVolatile) {
      smartMsg += " Watch out for highly volatile topics!";
+  }
+
+  if (selectedData.created.length > 0 && (selectedData.skipped.length > 0 || selectedData.pending.length > 0 || selectedData.completed.length > 0)) {
+     smartMsg += ` ✨ Added ${selectedData.created.length} new logs!`;
   }
 
   return (
@@ -72,19 +148,29 @@ export function CalendarWidget({ topics, logs = [] }: { topics: any[], logs?: an
                    key={day.toString()}
                    onClick={() => setSelectedDate(day)}
                    className={cn(
-                     "relative h-8 sm:h-10 w-full rounded-xl flex items-center justify-center text-xs font-semibold sm:text-sm transition-all duration-300",
+                     "relative h-8 sm:h-10 w-full rounded-xl flex items-center justify-center text-xs font-semibold sm:text-sm transition-all duration-300 overflow-hidden",
                      !isTgtMonth ? "text-gray-300 pointer-events-none" : "hover:bg-black/5",
-                     isSelected ? "bg-black text-white hover:bg-black shadow-md ring-2 ring-black/10 ring-offset-1" : (isTD ? "bg-gray-100/80 text-black border border-gray-200/50" : "text-gray-700 bg-white/40 border border-white/40 block")
+                     isSelected ? "bg-black text-white hover:bg-black shadow-md ring-2 ring-black/10 ring-offset-1" : (isTD ? "bg-blue-50 text-blue-700 border border-blue-200 shadow-sm" : "text-gray-700 bg-white/40 border border-white/40 block")
                    )}
                  >
-                   {format(day, 'd')}
+                   {/* Background Fade effects for pending and running out */}
+                   {!isSelected && isTgtMonth && st.hasRunningOutFade && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-red-400 via-transparent to-transparent opacity-100 pointer-events-none" />
+                   )}
+                   {!isSelected && isTgtMonth && st.hasPendingFade && !st.hasRunningOutFade && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-400 via-transparent to-transparent opacity-100 pointer-events-none" />
+                   )}
+
+                   <span className="relative z-10">{format(day, 'd')}</span>
                    
                    {/* Activity indicator */}
-                   {st.reviewsCount > 0 && isTgtMonth && (
-                      <div className="absolute bottom-1 flex space-x-1 pointer-events-none items-center justify-center w-full">
-                         <div className={cn("w-1.5 h-1.5 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-blue-500")} />
-                         {st.reviewsCount > 3 && <div className={cn("w-1.5 h-1.5 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-orange-500")} />}
-                         {st.reviewsCount > 6 && <div className={cn("w-1.5 h-1.5 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-red-500")} />}
+                   {isTgtMonth && (Object.values(st.dots).some(v => v)) && (
+                      <div className="absolute bottom-1 flex space-x-1 pointer-events-none items-center justify-center w-full z-10">
+                         {st.dots.pink && <div className={cn("w-1 h-1 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-pink-500")} />}
+                         {st.dots.green && <div className={cn("w-1 h-1 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-green-500")} />}
+                         {st.dots.blue && <div className={cn("w-1 h-1 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-blue-500")} />}
+                         {st.dots.red && <div className={cn("w-1 h-1 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-red-500")} />}
+                         {st.dots.orange && <div className={cn("w-1 h-1 rounded-full shadow-sm", isSelected ? "bg-white" : "bg-orange-500")} />}
                       </div>
                    )}
                  </button>
@@ -112,14 +198,67 @@ export function CalendarWidget({ topics, logs = [] }: { topics: any[], logs?: an
                {smartMsg}
             </div>
             
-            {selectedData.reviewsCount > 0 ? (
+            {selectedData.totalCount > 0 ? (
                <div className="space-y-4 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
-                  {topics.filter(t => isSameDay(new Date(t.nextReviewUtc), selectedDate)).map((t, idx) => (
-                     <div key={idx} className="flex items-start space-x-3 text-sm">
-                        <div className="w-1.5 h-1.5 rounded-full bg-black mt-1.5 shrink-0" />
+                  {selectedData.skipped.map((t: any, idx: number) => (
+                     <div key={`s-${idx}`} className="flex items-start justify-between text-sm group">
+                        <div className="flex items-start space-x-3">
+                           <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", t.isOptional ? "bg-orange-500" : "bg-red-500")} />
+                           <div>
+                              <p className="font-semibold text-gray-900 leading-tight">{t.title}</p>
+                              <p className={cn("text-xs font-medium mt-0.5", t.isOptional ? "text-orange-500" : "text-red-500")}>
+                                 {t.isOptional ? "Optional Overdue" : "Overdue"} • {format(new Date(t.nextReviewUtc), 'h:mm a')}
+                              </p>
+                           </div>
+                        </div>
+                        {onReviewComplete && (
+                           <button onClick={(e) => { e.stopPropagation(); onReviewComplete(t.id, 1.0); }} className="opacity-0 group-hover:opacity-100 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-all">
+                              Complete
+                           </button>
+                        )}
+                     </div>
+                  ))}
+                  {selectedData.pending.map((t: any, idx: number) => (
+                     <div key={`p-${idx}`} className="flex items-start justify-between text-sm group">
+                        <div className="flex items-start space-x-3">
+                           <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
+                           <div>
+                              <p className="font-semibold text-gray-900 leading-tight">{t.title}</p>
+                              <p className="text-xs text-blue-500 font-medium mt-0.5">Pending • {format(new Date(t.nextReviewUtc), 'h:mm a')}</p>
+                           </div>
+                        </div>
+                        {onReviewComplete && (
+                           <button onClick={(e) => { e.stopPropagation(); onReviewComplete(t.id, 1.0); }} className="opacity-0 group-hover:opacity-100 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 px-2 py-1 rounded text-xs font-semibold whitespace-nowrap transition-all">
+                              Complete
+                           </button>
+                        )}
+                     </div>
+                  ))}
+                  {selectedData.completed.map((t: any, idx: number) => {
+                     const h = t.historyLog;
+                     const colorBg = h?.status === 'on-time' ? 'bg-green-500' : h?.status === 'early' ? 'bg-pink-500' : 'bg-red-500';
+                     const colorText = h?.status === 'on-time' ? 'text-green-600' : h?.status === 'early' ? 'text-pink-600' : 'text-red-600';
+                     const label = h?.status === 'on-time' ? 'Completed On Time' : h?.status === 'early' ? 'Completed Early' : 'Completed Late';
+
+                     return (
+                        <div key={`c-${idx}`} className="flex items-start space-x-3 text-sm opacity-60">
+                           <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", colorBg)} />
+                           <div>
+                              <p className="font-semibold text-gray-900 leading-tight line-through">{t.title}</p>
+                              <p className={cn("text-xs font-medium mt-0.5", colorText)}>{label}</p>
+                           </div>
+                        </div>
+                     );
+                  })}
+                  {selectedData.created.map((t: any, idx: number) => (
+                     <div key={`cr-${idx}`} className="flex items-start space-x-3 text-sm">
+                        <div className="w-1.5 h-1.5 rounded-full bg-pink-500 mt-1.5 shrink-0" />
                         <div>
                            <p className="font-semibold text-gray-900 leading-tight">{t.title}</p>
-                           <p className="text-xs text-gray-500 mt-0.5">{format(new Date(t.nextReviewUtc), 'h:mm a')}</p>
+                           <p className="text-xs text-pink-600 font-medium mt-0.5 flex items-center space-x-1">
+                             <Icons.Star size={10} />
+                             <span>Achievement: New Log Added</span>
+                           </p>
                         </div>
                      </div>
                   ))}

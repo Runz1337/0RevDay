@@ -49,11 +49,16 @@ function LiveTimerIndicator({ topic, onEditTime }: { topic: any, onEditTime?: (i
     prevSeconds.current = diffSeconds;
   }, [diffSeconds]);
 
-  const h = Math.floor(secondsLeft / 3600);
+  const d = Math.floor(secondsLeft / (3600 * 24));
+  const h = Math.floor((secondsLeft % (3600 * 24)) / 3600);
   const m = Math.floor((secondsLeft % 3600) / 60);
   const s = secondsLeft % 60;
   
-  const timeStr = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  const dStr = d > 0 ? `${d}d ` : '';
+  const hStr = h > 0 ? `${h}h ` : (d > 0 ? '0h ' : '');
+  const mStr = `${m}m `;
+  const sStr = `${s}s`;
+  const timeStr = `${dStr}${hStr}${mStr}${sStr}`;
   
   // Format based on backwards countdown
   const formattedTime = isDue ? `OVERDUE +${timeStr}` : `-${timeStr}`;
@@ -238,16 +243,21 @@ export function FlashcardPlayer({ flashcards }: { flashcards: any[], isLight?: b
              <div key={idx} className={cn("w-1.5 h-1.5 rounded-full", idx === currentIndex ? "bg-black/80" : "bg-black/10")} />
           ))}
         </div>
-        <button 
-          onClick={nextCard} 
-          disabled={currentIndex === flashcards.length - 1}
-          className={cn("p-3 rounded-full transition-colors flex items-center gap-2", 
-            currentIndex === flashcards.length - 1 ? "opacity-30 cursor-not-allowed" : "glass hover:bg-white/60",
-            "text-gray-900"
-          )}
-        >
-          <Icons.ArrowRight size={16} />
-        </button>
+        {currentIndex === flashcards.length - 1 ? (
+          <button 
+            onClick={(e) => { e.stopPropagation(); setCurrentIndex(0); setFlipped(false); }} 
+            className="p-3 bg-black text-white rounded-full transition-colors flex items-center gap-2 hover:bg-gray-800"
+          >
+            <Icons.RotateCcw size={16} />
+          </button>
+        ) : (
+          <button 
+            onClick={nextCard} 
+            className="p-3 glass hover:bg-white/60 rounded-full transition-colors flex items-center gap-2 text-gray-900"
+          >
+            <Icons.ArrowRight size={16} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -386,10 +396,16 @@ export function FireCard({ topic, onReviewComplete, onToggleSub, onDeleteTopic, 
     >
       <div className="flex flex-col relative z-10 w-full">
         <div className="flex items-center justify-between text-gray-400 font-semibold text-[10px] uppercase tracking-widest mb-4 pr-10">
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-black">{topic.uiPriorityLabel || 'CRITICAL'}</span>
             <span>/</span>
             <span>{topic.category}</span>
+            {(topic.reviewStep || 0) > 0 && (
+              <>
+                <span>/</span>
+                <span className="text-purple-500 font-bold">REV {topic.reviewStep}</span>
+              </>
+            )}
           </div>
         </div>
         
@@ -463,10 +479,16 @@ export function PulseCard({ topic, onReviewComplete, onToggleSub, onDeleteTopic,
            {expanded ? <Icons.Minus size={20} /> : <Icons.Plus size={20} />}
         </div>
 
-        <div className="flex items-center gap-2 text-gray-400 font-semibold text-[10px] uppercase tracking-widest mb-3 pr-10">
+        <div className="flex flex-wrap items-center gap-2 text-gray-400 font-semibold text-[10px] uppercase tracking-widest mb-3 pr-10">
           <span>{topic.category}</span>
           <span>/</span>
           <span>QUICK RECALL</span>
+          {(topic.reviewStep || 0) > 0 && (
+            <>
+              <span>/</span>
+              <span className="text-purple-500 font-bold">REV {topic.reviewStep}</span>
+            </>
+          )}
         </div>
         
         <h4 className="text-lg font-medium text-gray-900 mb-2 pr-8 leading-tight tracking-tight">{topic.title}</h4>
@@ -512,7 +534,7 @@ export function PulseCard({ topic, onReviewComplete, onToggleSub, onDeleteTopic,
   );
 }
 
-export function GhostCard({ topic, onToggleSub, onDeleteTopic, onOpenFlashcards, onEditTime }: { key?: React.Key; topic: any, onToggleSub?: (id: string, idx: number) => void, onDeleteTopic?: (id: string) => void, onOpenFlashcards?: (id: string) => void, onEditTime?: (id: string, time: number) => void }) {
+export function GhostCard({ topic, onReviewComplete, onToggleSub, onDeleteTopic, onOpenFlashcards, onEditTime }: { key?: React.Key; topic: any, onReviewComplete?: (id: string, confidence: number) => void, onToggleSub?: (id: string, idx: number) => void, onDeleteTopic?: (id: string) => void, onOpenFlashcards?: (id: string) => void, onEditTime?: (id: string, time: number) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -523,15 +545,38 @@ export function GhostCard({ topic, onToggleSub, onDeleteTopic, onOpenFlashcards,
       <div className="flex items-center justify-between w-full">
         <div className="flex-1 min-w-0 pr-4">
           <h5 className="text-sm font-medium text-gray-900 truncate mb-1">{topic.title}</h5>
-          <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold">{topic.category}</p>
+          <p className="text-[9px] text-gray-400 uppercase tracking-widest font-semibold flex flex-wrap items-center gap-1">
+            <span>{topic.category}</span>
+            {(topic.reviewStep || 0) > 0 && (
+              <>
+                <span>•</span>
+                <span className="text-purple-500 font-bold">REV {topic.reviewStep}</span>
+              </>
+            )}
+          </p>
         </div>
         <div className="shrink-0 text-gray-300 group-hover:text-black">
            {expanded ? <Icons.Minus size={16} /> : <Icons.Plus size={16} />}
         </div>
       </div>
       
-      <div className="mt-2">
-         <LiveTimerIndicator topic={topic} onEditTime={onEditTime} />
+      <div className="mt-2 flex items-center justify-between">
+         {!topic.isCompleted ? (
+           <LiveTimerIndicator topic={topic} onEditTime={onEditTime} />
+         ) : (
+           <div className="flex items-center text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded-md border border-green-100">
+             <Icons.CheckCircle2 size={12} className="mr-1" />
+             Mastered
+           </div>
+         )}
+         {onReviewComplete && (
+            <button 
+               onClick={(e) => { e.stopPropagation(); onReviewComplete(topic.id, 1.0); }}
+               className="ml-2 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
+            >
+               Complete
+            </button>
+         )}
       </div>
 
       <AnimatePresence>

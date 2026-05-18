@@ -11,6 +11,13 @@
         "yield": { "type": "string", "description": "High/medium/low yield" },
         "category": { "type": "string" },
         "nextReviewUtc": { "type": "number", "description": "Timestamp for the next scheduled review" },
+        "reviewStep": { "type": "number", "description": "Review step index" },
+        "isOptional": { "type": "boolean", "description": "Whether the review is optional" },
+        "isCompleted": {
+          "type": "boolean",
+          "description": "Whether the topic is completed based on the rev count"
+        },
+        "reviewHistory": { "type": "array", "description": "History of reviews" },
         "bandwidthWeight": { "type": "number", "description": "0-1 load balancer weight" },
         "volatilityScore": { "type": "number", "description": "Volatility score" },
         "stability": { "type": "number", "description": "Successful reviews" },

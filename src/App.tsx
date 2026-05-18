@@ -3,6 +3,7 @@ import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, query, orderBy, where } from 'firebase/firestore';
 import { FireCard, PulseCard, GhostCard, playReminderSound } from './components/ReviewCards';
+import { scheduleNotification, cancelScheduledNotification, requestNotificationPermission } from './lib/notificationService';
 import { FlashcardAppView } from './components/FlashcardAppView';
 import { CameraViewfinder } from './components/CameraViewfinder';
 import { CalendarWidget } from './components/CalendarWidget';
@@ -13,7 +14,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'cards' | 'settings'>('dashboard');
   
   // Data State
   const [topics, setTopics] = useState<any[]>([]);
@@ -75,6 +76,25 @@ export default function App() {
     
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    // Schedule notifications for all topics
+    topics.forEach(t => {
+      if (!t.isCompleted) {
+        scheduleNotification(
+          t.id, 
+          "Review Reminder: " + t.title, 
+          t.nextReviewUtc, 
+          t.reminderCopy || "It's time to review this topic!"
+        );
+      } else {
+        cancelScheduledNotification(t.id);
+      }
+    });
+    
+    // Cleanup on unmount or when topics change (this might be overkill to clear them all on every re-render, 
+    // but the service function handles clearing by ID inside it, so it's safe to just call schedule again)
+  }, [topics]);
 
   const login = () => {
     const provider = new GoogleAuthProvider();
@@ -144,6 +164,7 @@ export default function App() {
           bandwidthWeight: bandwidthWeight,
           volatilityScore: Math.max(t.metadata.hardness, t.metadata.visual_density_score || 0), // Base volatility on hardness and visual density
           stability: 0,
+          isCompleted: false,
           reminderCopy: t.reminder_copy || '',
           uiCardColor: t.ui_elements?.card_color || '#333333',
           uiIcon: t.ui_elements?.icon || 'BookOpen',
@@ -216,23 +237,54 @@ export default function App() {
     if (!topic) return;
 
     try {
-      // Dynamic Load-Balanced Spacing (DLBS) Logic
-      const newStability = topic.stability + (confidence >= 1 ? 1 : 0);
-      const newVolatility = Math.max(1, topic.volatilityScore * (1.5 - confidence));
+      const newStep = (topic.reviewStep || 0) + 1;
+      const sequence = [2, 3, 5, 7, 21];
+      const isFinishing21DaysOrLater = newStep > sequence.length;
+
+      const seqIndex = Math.min(newStep - 1, sequence.length - 1);
+      const intervalDays = sequence[seqIndex];
+
+      let nextReviewUtc = topic.nextReviewUtc;
       
-      // Interval = Math.max(1, (Stability * 2) / (Volatility * Hardness)) * Confidence
-      let intervalDays = Math.max(0.5, (newStability * 1.5) * confidence);
-      if (confidence < 1) {
-         intervalDays = 0.5; // Half a day minimum
-      } else if (newStability <= 1) {
-         intervalDays = 1; // 1 day for first good review
+      if (!isFinishing21DaysOrLater && !topic.isCompleted) {
+        const nextDate = new Date();
+        nextDate.setDate(nextDate.getDate() + intervalDays);
+        nextDate.setHours(23, 59, 59, 999);
+        nextReviewUtc = nextDate.getTime();
       }
       
-      const nextReviewUtc = Date.now() + (intervalDays * 24 * 60 * 60 * 1000);
-      
+      const isOptional = sequence[seqIndex] === 7 || sequence[seqIndex] === 21;
+
+      const now = new Date();
+      let status = 'on-time';
+      let scheduledForNum = topic.nextReviewUtc;
+
+      if (topic.isCompleted) {
+         scheduledForNum = now.getTime();
+         status = 'on-time';
+      } else {
+         const scheduledForDate = new Date(topic.nextReviewUtc);
+         if (now.getDate() < scheduledForDate.getDate() || now.getMonth() < scheduledForDate.getMonth()) {
+             status = 'early';
+         } else if (now.getTime() > scheduledForDate.getTime()) {
+             status = 'late';
+         }
+      }
+
+      const historyLog = {
+          date: now.getTime(),
+          scheduledFor: scheduledForNum,
+          status,
+          step: newStep
+      };
+
+      const updatedHistory = [...(topic.reviewHistory || []), historyLog];
+
       await updateDoc(doc(db, 'users', user.uid, 'topics', topicId), {
-        stability: newStability,
-        volatilityScore: newVolatility,
+        reviewStep: newStep,
+        isCompleted: topic.isCompleted || isFinishing21DaysOrLater,
+        isOptional: isOptional,
+        reviewHistory: updatedHistory,
         nextReviewUtc: Math.floor(nextReviewUtc),
         updatedAt: Date.now()
       });
@@ -363,30 +415,33 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 font-sans text-gray-900 pb-[calc(1rem+env(safe-area-inset-bottom))] relative z-10">
-        <div className="glass-card max-w-md w-full rounded-[2.5rem] p-8 sm:p-10 text-center mx-4 shadow-xl border border-white/20">
-          <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-white shadow-inner border border-gray-200 text-black rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 relative overflow-hidden">
-             <svg viewBox="0 0 100 100" className="w-16 h-16 drop-shadow-md" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" clipRule="evenodd" d="M50 8C26.804 8 8 26.804 8 50C8 73.196 26.804 92 50 92C62 92 72 87 79 80L50 50L87 35C80 19 66 8 50 8Z" fill="black" />
-                <path d="M50 50L79 80C87 72 92 62 92 50C92 44 91 39 87 35L50 50Z" fill="url(#fold-gradient)" />
-                <defs>
-                   <linearGradient id="fold-gradient" x1="50" y1="50" x2="92" y2="80" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%" stopColor="#666" />
-                      <stop offset="100%" stopColor="#ccc" />
-                   </linearGradient>
-                </defs>
-             </svg>
+      <div className="min-h-screen bg-white flex flex-col relative overflow-hidden font-sans text-black selection:bg-black selection:text-white">
+        <div className="absolute top-0 left-0 w-full h-[50vh] bg-gradient-to-b from-gray-50 to-white pointer-events-none" />
+        <div className="absolute -top-[20vh] -right-[10vh] w-[60vh] h-[60vh] rounded-full bg-gray-50 blur-3xl pointer-events-none" />
+        
+        <div className="flex-1 flex flex-col items-center justify-center p-6 relative z-10 w-full">
+          <div className="w-full max-w-sm">
+            <div className="mb-12 flex justify-center">
+              <div className="w-24 h-24 bg-white/50 backdrop-blur rounded-[2rem] shadow-xl transform hover:scale-105 transition-transform duration-500 ease-out border border-gray-100 flex items-center justify-center overflow-hidden">
+                <img src="/IMG_20260516_153733.png" alt="App Icon" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling!.classList.remove('hidden'); }} />
+                <div className="hidden text-gray-400 text-xs text-center p-2">Upload 'IMG_20260516_153733.png' to public</div>
+              </div>
+            </div>
+            
+            <div className="text-center space-y-3 mb-16">
+              <h1 className="text-4xl font-black tracking-tighter leading-none">0RevDay</h1>
+              <p className="text-gray-500 font-medium tracking-tight">Revise. Retain. Excel.</p>
+            </div>
+            
+            <button 
+               onClick={login}
+               className="group w-full py-4 px-6 rounded-2xl bg-black text-white hover:bg-gray-900 transition-all duration-300 flex items-center justify-center space-x-3 active:scale-[0.98] shadow-xl hover:shadow-black/20"
+            >
+               <span className="font-semibold text-base tracking-wide">Continue with Google</span>
+               <Icons.ArrowRight size={18} className="opacity-0 -ml-6 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 ease-out" />
+            </button>
+            <p className="mt-8 text-center text-xs font-medium text-gray-400 tracking-wide">Secure and fast login</p>
           </div>
-          <h1 className="text-3xl font-semibold mb-3 tracking-tight">0RevDay</h1>
-          <p className="text-gray-600 mb-10 leading-relaxed font-normal px-4">
-            Dynamic Load-Balanced Spacing. The medical revision app that treats your brain like a load-balanced server.
-          </p>
-          <button 
-             onClick={login}
-             className="w-full py-4 px-6 rounded-[1.5rem] flex items-center justify-center space-x-2 shadow-md font-semibold text-white bg-black hover:bg-gray-900 transition-colors"
-          >
-             <span>Sign in with Google</span>
-          </button>
         </div>
       </div>
     );
@@ -394,8 +449,11 @@ export default function App() {
 
   const nowMs = Date.now();
   // Very simplistic sort for UI:
-  const dueTopics = topics.filter(t => t.nextReviewUtc <= nowMs + (1000 * 60 * 60 * 2)); // due now or within 2 hours
-  const upcomingTopics = topics.filter(t => t.nextReviewUtc > nowMs + (1000 * 60 * 60 * 2));
+  const activeTopics = topics.filter(t => !t.isCompleted);
+  const completedTopics = topics.filter(t => t.isCompleted);
+  
+  const dueTopics = activeTopics.filter(t => t.nextReviewUtc <= nowMs + (1000 * 60 * 60 * 2)); // due now or within 2 hours
+  const upcomingTopics = activeTopics.filter(t => t.nextReviewUtc > nowMs + (1000 * 60 * 60 * 2));
 
   // Partition due topics by type
   const fireTopics = dueTopics.filter(t => t.hardness >= 7 || t.volatilityScore > 5);
@@ -406,11 +464,8 @@ export default function App() {
       {!selectedTopicIdForFlashcards && (
         <header className="absolute top-0 left-0 right-0 z-50 pt-[calc(1rem+env(safe-area-inset-top))] px-6 flex items-center justify-between pointer-events-none">
           <div className="flex items-center space-x-2 font-bold text-xl tracking-tight text-gray-800 drop-shadow-sm pointer-events-auto">
-             <div className="w-8 h-8 rounded-xl bg-black text-white flex items-center justify-center shadow-lg">
-                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-[18px] h-[18px] drop-shadow-md">
-                   <path fillRule="evenodd" clipRule="evenodd" d="M50 5C25.147 5 5 25.147 5 50C5 74.853 25.147 95 50 95H70L95 70V50C95 25.147 74.853 5 50 5ZM30 50C30 38.954 38.954 30 50 30C61.046 30 70 38.954 70 50V60H50C38.954 60 30 51.046 30 50Z" fill="currentColor"/>
-                   <path d="M70 95L95 70H70V95Z" fill="#888"/>
-                </svg>
+           <div className="w-8 h-8 rounded-xl bg-black text-white flex items-center justify-center shadow-lg overflow-hidden">
+                <img src="/IMG_20260516_153733.png" alt="Logo" className="w-full h-full object-cover" />
              </div>
              <span>0RevDay</span>
           </div>
@@ -437,8 +492,8 @@ export default function App() {
                <span>Add Log</span>
             </button>
             <button 
-               onClick={() => { setActiveTab('dashboard'); setSelectedTopicIdForFlashcards(topics[0]?.id || null); }} 
-               className={selectedTopicIdForFlashcards ? 'active' : ''}
+               onClick={() => { setActiveTab('cards'); setSelectedTopicIdForFlashcards(null); }} 
+               className={activeTab === 'cards' && !selectedTopicIdForFlashcards ? 'active' : ''}
             >
                <Icons.Layers />
                <span>Cards</span>
@@ -479,7 +534,7 @@ export default function App() {
               className="space-y-12"
             >
                <div className="pt-2 sm:pt-4">
-                  <CalendarWidget topics={topics} />
+                  <CalendarWidget topics={topics} onReviewComplete={handleReviewComplete} />
                   
                   <h2 className="text-lg sm:text-xl font-semibold tracking-tight mb-4 sm:mb-6 flex items-center space-x-2">
                     <div className="w-2 h-2 rounded-full bg-black"></div>
@@ -524,10 +579,92 @@ export default function App() {
                    </button>
                  </div>
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {upcomingTopics.slice(0,6).map(t => <GhostCard key={t.id} topic={t} onToggleSub={handleToggleSub} onDeleteTopic={handleDeleteTopic} onOpenFlashcards={setSelectedTopicIdForFlashcards} onEditTime={handleEditTime} />)}
+                    {upcomingTopics.slice(0,6).map(t => <GhostCard key={t.id} topic={t} onToggleSub={handleToggleSub} onDeleteTopic={handleDeleteTopic} onOpenFlashcards={setSelectedTopicIdForFlashcards} onEditTime={handleEditTime} onReviewComplete={handleReviewComplete} />)}
                  </div>
                </div>
+
+               {completedTopics.length > 0 && (
+                 <div className="mt-8 border-t border-gray-200 pt-8">
+                   <div className="flex items-center justify-between mb-4 pb-2">
+                     <h3 className="text-[10px] font-bold text-gray-400 tracking-widest uppercase flex items-center space-x-2">
+                       <Icons.CheckCircle2 size={14} />
+                       <span>Completed Mastered</span>
+                     </h3>
+                   </div>
+                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {completedTopics.slice(0, 10).map(t => <GhostCard key={t.id} topic={t} onToggleSub={handleToggleSub} onDeleteTopic={handleDeleteTopic} onOpenFlashcards={setSelectedTopicIdForFlashcards} onEditTime={handleEditTime} onReviewComplete={handleReviewComplete} />)}
+                   </div>
+                 </div>
+               )}
             </motion.div>
+          ) : activeTab === 'cards' ? (
+             <motion.div 
+               key="cards"
+               initial={{ opacity: 0, y: 10 }}
+               animate={{ opacity: 1, y: 0 }}
+               exit={{ opacity: 0, y: -10 }}
+               className="w-full max-w-2xl mx-auto space-y-6 pt-4"
+             >
+                <h2 className="text-2xl font-bold tracking-tight text-gray-900 mb-6 flex items-center space-x-2">
+                   <Icons.Layers size={24} />
+                   <span>Flashcard Hub</span>
+                </h2>
+                
+                {topics.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 glass-card rounded-2xl">
+                    No topics created yet.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                     {topics.map(t => {
+                        const setQty = t.flashcardSets?.length || 0;
+                        const hasSets = setQty > 0;
+                        return (
+                           <div key={t.id} className="p-5 bg-white/70 rounded-2xl border border-white/50 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                              <div className="flex-1">
+                                <h3 className="font-semibold text-gray-900 text-lg mb-1">{t.title}</h3>
+                                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-gray-500">
+                                  {hasSets ? (
+                                    <span className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-md border border-blue-100 flex items-center gap-1">
+                                      <Icons.Library size={14} />
+                                      {setQty} Deck{setQty !== 1 ? 's' : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="bg-gray-100 px-2.5 py-1 rounded-md flex items-center gap-1 border border-gray-200">
+                                      <Icons.AlertCircle size={14} />
+                                      No Decks
+                                    </span>
+                                  )}
+                                  <span className={cn(
+                                    "px-2.5 py-1 rounded-md border", 
+                                    t.nextReviewUtc < Date.now() ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-600 border-green-100"
+                                  )}>
+                                    {t.nextReviewUtc < Date.now() ? "Review Pending" : "Current"}
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setSelectedTopicIdForFlashcards(t.id)}
+                                className="px-5 py-2.5 bg-black hover:bg-gray-900 text-white text-sm font-semibold rounded-xl flex items-center space-x-2 w-full sm:w-auto justify-center transition-all active:scale-95 shadow-md"
+                              >
+                                {hasSets ? (
+                                  <>
+                                    <span>Study Cards</span>
+                                    <Icons.ArrowRight size={16} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <Icons.Sparkles size={16} />
+                                    <span>Generate</span>
+                                  </>
+                                )}
+                              </button>
+                           </div>
+                        );
+                     })}
+                  </div>
+                )}
+             </motion.div>
           ) : activeTab === 'settings' ? (
             <motion.div 
               key="settings"
@@ -572,6 +709,26 @@ export default function App() {
                            <p className="text-xs text-gray-600">Toggle bouncy effects</p>
                         </div>
                         <input type="checkbox" className="liquid-toggle" defaultChecked />
+                     </div>
+
+                     <div className="flex items-center justify-between p-4 bg-white/40 rounded-xl border border-white/60 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)]">
+                        <div>
+                           <p className="font-semibold text-gray-900 text-sm">Notifications</p>
+                           <p className="text-xs text-gray-600">Enable study reminders</p>
+                        </div>
+                        <button 
+                           onClick={async () => {
+                             const allowed = await requestNotificationPermission();
+                             if (allowed) {
+                               alert('Notifications enabled!');
+                             } else {
+                               alert('Notifications are not permitted or supported in this browser context.');
+                             }
+                           }}
+                           className="text-xs px-3 py-1.5 bg-black/5 hover:bg-black/10 rounded-lg font-semibold"
+                        >
+                           Enable
+                        </button>
                      </div>
 
                      <div className="p-4 bg-white/40 rounded-xl border border-white/60 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)] space-y-4">
