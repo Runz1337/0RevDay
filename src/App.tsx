@@ -733,21 +733,22 @@ export default function App() {
 
                      <div className="p-4 bg-white/40 rounded-xl border border-white/60 shadow-[inset_0_1px_2px_rgba(255,255,255,0.8)] space-y-4">
                         <div>
-                           <p className="font-semibold text-gray-900 text-sm">Custom AI Provider</p>
-                           <p className="text-xs text-gray-600 mb-4">Use a Gemini-compatible API</p>
+                           <p className="font-semibold text-gray-900 text-sm">AI Settings</p>
+                           <p className="text-xs text-gray-600 mb-4">Set your Gemini API key (or compatible API)</p>
                         </div>
                         <div>
-                           <label className="block text-xs font-semibold text-gray-500 mb-1">API Key (Optional)</label>
+                           <label className="block text-xs font-semibold text-gray-500 mb-1">Gemini API Key</label>
                            <input type="password" 
+                              placeholder="AIzaSy..."
                               className="w-full px-3 py-2 rounded-lg bg-white/60 border border-white/80 focus:outline-none focus:ring-1 focus:ring-black/20 text-sm" 
                               defaultValue={localStorage.getItem('customAiKey') || ''}
                               onChange={(e) => localStorage.setItem('customAiKey', e.target.value)}
                            />
                         </div>
                         <div>
-                           <label className="block text-xs font-semibold text-gray-500 mb-1">Base URL (For compatible proxies)</label>
+                           <label className="block text-xs font-semibold text-gray-500 mb-1">Base URL (Optional)</label>
                            <input type="text" 
-                              placeholder="e.g. https://openrouter.ai/api/v1"
+                              placeholder="e.g. https://generativelanguage.googleapis.com/v1beta"
                               className="w-full px-3 py-2 rounded-lg bg-white/60 border border-white/80 focus:outline-none focus:ring-1 focus:ring-black/20 text-sm" 
                               defaultValue={localStorage.getItem('customAiUrl') || 'https://generativelanguage.googleapis.com/v1beta'}
                               onChange={(e) => localStorage.setItem('customAiUrl', e.target.value)}
